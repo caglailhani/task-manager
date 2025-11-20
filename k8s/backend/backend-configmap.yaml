@@ -7,3 +7,5 @@ data:
   DB_NAME: "taskdb"
   DB_USER: "root"
   FLASK_ENV: "production"
+
+

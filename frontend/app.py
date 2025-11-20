@@ -54,7 +54,16 @@ def api_headers():
 def tasks_list():
     try:
         r = requests.get(f"{BACKEND}/api/tasks", headers=api_headers(), timeout=10)
-        return r.json() if r.ok else []
+        if not r.ok:
+            return []
+        js = r.json()
+        # API bazen { "items": [...] } döndürüyor
+        if isinstance(js, dict) and isinstance(js.get("items"), list):
+            return js["items"]
+        # yoksa zaten listeyse onu döndür
+        if isinstance(js, list):
+            return js
+        return []
     except Exception:
         return []
 
@@ -72,7 +81,7 @@ def task_create(title, description=""):
 
 def task_toggle(task_id):
     try:
-        r = requests.patch(f"{BACKEND}/api/tasks/{task_id}/toggle", headers=api_headers(), timeout=10)
+        r = requests.put(f"{BACKEND}/api/tasks/{task_id}/toggle", headers=api_headers(), timeout=10)
         return r.ok
     except Exception:
         return False
@@ -84,6 +93,15 @@ def task_delete(task_id):
     except Exception:
         return False
 # -------------------------------------
+
+def _is_done(t):
+    """completed: bool veya status: 'done' ise True."""
+    if isinstance(t, dict):
+        if t.get("completed"):
+            return True
+        status = str(t.get("status", "")).lower()
+        return status == "done" or status == "completed"
+    return False
 
 # session
 if "auth" not in st.session_state:
@@ -142,9 +160,9 @@ if st.session_state.auth and st.session_state.auth.get("token"):
         st.info("No tasks yet. Add your first task!")
     else:
         # show incomplete first, then completed
-        data = sorted(data, key=lambda t: (t.get("completed", False), t.get("id", 0)))
+        data = sorted(data, key=lambda t: (_is_done(t), t.get("id", 0)))
         for t in data:
-            done = t.get("completed", False)
+            done = _is_done(t)
             rid  = t.get("id")
             row_class = "task-row done" if done else "task-row"
             st.markdown(f'<div class="{row_class}">', unsafe_allow_html=True)
@@ -205,4 +223,3 @@ with st.form("login_form", clear_on_submit=False):
                 st.success("Logged in!")
                 st.rerun()
 st.markdown('</div>', unsafe_allow_html=True)
-
