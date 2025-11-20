@@ -1,59 +1,35 @@
-name: CD - Task Manager (commands)
+name: CD - Task Manager (Kubernetes deploy)
 
 on:
-  workflow_dispatch:
   push:
     branches: [ "main" ]
 
 jobs:
-  deploy_commands:
-    runs-on: ubuntu-latest
+  deploy:
+    runs-on: self-hosted   # Senin bilgisayarındaki runner
+
     env:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME || '' }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN || '' }}
+      DOCKERHUB_USERNAME: ilhanicagla
+
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Determine image tags
-        id: tags
-        run: |
-          echo "OWNER=${GITHUB_REPOSITORY%%/*}" >> $GITHUB_OUTPUT
-          echo "SHA=${GITHUB_SHA}" >> $GITHUB_OUTPUT
+      - name: Show kubectl context
+        run: kubectl config current-context
 
-      - name: Compose kubectl commands
+      - name: Apply Kubernetes manifests
         run: |
-          OWNER="${{ steps.tags.outputs.OWNER }}"
-          SHA="${{ steps.tags.outputs.SHA }}"
-          cat > deploy-commands.txt << 'EOF'
-          # === Task Manager deploy/update commands ===
-          # Backend image to use:
-          #   docker.io/${OWNER}/task-backend:${SHA}
-          #   docker.io/${OWNER}/task-backend:latest
-          # Frontend image to use:
-          #   docker.io/${OWNER}/task-frontend:${SHA}
-          #   docker.io/${OWNER}/task-frontend:latest
-
-          # Apply manifests (if not already applied)
           kubectl apply -f k8s/mysql/
           kubectl apply -f k8s/backend/
           kubectl apply -f k8s/frontend/
 
-          # Update images to this commit's SHA (rollout)
-          kubectl set image deploy/backend backend=docker.io/${OWNER}/task-backend:${SHA}
-          kubectl set image deploy/frontend frontend=docker.io/${OWNER}/task-frontend:${SHA}
+      - name: Update backend image
+        run: |
+          kubectl set image deployment/backend backend=docker.io/${{ env.DOCKERHUB_USERNAME }}/task-backend:latest
+          kubectl rollout status deployment/backend
 
-          # Watch rollout
-          kubectl rollout status deploy/backend
-          kubectl rollout status deploy/frontend
-
-          # Quick health checks
-          kubectl get pods -o wide
-          kubectl logs deploy/backend --tail=80
-          EOF
-
-      - name: Upload deploy commands (artifact)
-        uses: actions/upload-artifact@v4
-        with:
-          name: deploy-commands
-          path: deploy-commands.txt
+      - name: Update frontend image
+        run: |
+          kubectl set image deployment/frontend frontend=docker.io/${{ env.DOCKERHUB_USERNAME }}/task-frontend:latest
+          kubectl rollout status deployment/frontend
